@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animatronic Control Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .control-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Animatronic Control Dashboard</h1>
+
+        <!-- Animatronic Controls -->
+        <div class="control-group">
+            <h2>Mouth Control</h2>
+            <button onclick="openMouth()">Open Mouth</button>
+        </div>
+
+        <!-- Eye Controls -->
+        <div class="control-group">
+            <h2>Eye Controls</h2>
+            <button onclick="turnOnEyes()">Turn On Eyes</button>
+            <button onclick="turnOffEyes()">Turn Off Eyes</button>
+        </div>
+
+        <!-- Body Movement -->
+        <div class="control-group">
+            <h2>Body Movement</h2>
+            <button onclick="moveBody()">Move Body (Dance)</button>
+        </div>
+
+        <!-- Audio Controls -->
+        <div class="control-group">
+            <h2>Audio Controls</h2>
+            <button onclick="playAudio()">Play Audio</button>
+            <button onclick="stopAudio()">Stop Audio</button>
+        </div>
+
+        <!-- Camera Controls -->
+        <div class="control-group">
+            <h2>Camera Controls</h2>
+            <button onclick="capturePhoto()">Capture Photo</button>
+            <a href="/api/camera/stream" target="_blank">View Stream</a>
+        </div>
+
+        <!-- Status Display -->
+        <div class="control-group">
+            <h2>Status</h2>
+            <div id="status"></div>
+        </div>
+    </div>
+
+    <script>
+        // Update status periodically
+        function updateStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('status');
+                    if (data.status === 'success') {
+                        const status = data.data;
+                        statusDiv.innerHTML = `
+                            <div class="status success">
+                                <strong>System Status:</strong><br>
+                                Audio I2S: ${status.audio.i2s_enabled ? 'Enabled' : 'Disabled'}<br>
+                                Webcam: ${status.webcam.detected ? 'Detected' : 'Not Detected'}
+                            </div>
+                        `;
+                    } else {
+                        statusDiv.innerHTML = `<div class="status error">Error fetching status</div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('status').innerHTML = '<div class="status error">Error fetching status</div>';
+                });
+        }
+
+        // Animatronic Control Functions
+        function openMouth() {
+            fetch('/api/mouth/open', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error opening mouth');
+                });
+        }
+
+        function turnOnEyes() {
+            fetch('/api/eyes/on', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error turning on eyes');
+                });
+        }
+
+        function turnOffEyes() {
+            fetch('/api/eyes/off', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error turning off eyes');
+                });
+        }
+
+        function moveBody() {
+            fetch('/api/body/move', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error moving body');
+                });
+        }
+
+        // Audio Control Functions
+        function playAudio() {
+            fetch('/api/audio/play', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error playing audio');
+                });
+        }
+
+        function stopAudio() {
+            fetch('/api/audio/stop', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error stopping audio');
+                });
+        }
+
+        // Camera Control Functions
+        function capturePhoto() {
+            fetch('/api/camera/capture', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(data.message);
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error capturing photo');
+                });
+        }
+
+        // Update status every 5 seconds
+        setInterval(updateStatus, 5000);
+
+        // Initial status update
+        updateStatus();
+    </script>
+</body>
+</html>
