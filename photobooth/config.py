@@ -78,11 +78,64 @@ class PrinterConfig:
 
 
 @dataclass
+class InteractionConfig:
+    """The booth's spoken, animated visitor sequence (see photobooth/interaction/)."""
+
+    enabled: bool = False
+    voice_dir: str = "assets/voice"  # rendered by scripts/make_voice_lines.py
+    play_audio: bool = True
+    # The MAX98357A card only takes stereo; plughw converts the mono clips for us.
+    audio_device: str = "plughw:CARD=sndmax98357adac,DEV=0"
+    volume: float = 1.0  # 0..1; the MAX98357A is a small mono amp, speech below ~30% is hard to understand
+    # Moving the real eyes and mouth is opt-in: off means a simulated skeleton, audio only.
+    use_gpio: bool = False
+    move_mouth: bool = True
+    flash_eyes: bool = True
+    auto_print: bool = False  # studio-first: review the reel before spending paper
+
+    welcome: bool = True  # the long instructions line; turn off for a faster line of visitors
+    invite_max: int = 4  # invitation lines before giving up on nobody coming
+    invite_gap_s: float = 4.0  # quiet time after each invitation, still watching for visitors
+    presence_poll_s: float = 1.0  # how often to look for a person while waiting
+    presence_confirmations: int = 2  # consecutive looks with a person before greeting them
+    absence_confirmations: int = 4  # consecutive empty looks before deciding the visitor walked off
+    hold_seconds: float = 3.0  # at least this long of "hold still" talk before the countdown
+    count_gap_s: float = 0.5  # pause between spoken countdown words
+    cooldown_s: float = 15.0  # no new sequence from a trigger for this long afterwards
+
+    # Mouth motor limits: the jaw is a small DC motor, so never chatter it.
+    mouth_on_threshold: float = 0.30  # normalized loudness that opens the mouth
+    mouth_off_threshold: float = 0.14  # ... and that lets it close (hysteresis)
+    mouth_min_open_s: float = 0.175  # measured on the skelly: a 0.35 s open+close cycle keeps up
+    mouth_min_closed_s: float = 0.175
+    mouth_max_open_s: float = 0.45  # never hold the motor on longer than this
+    # The jaw drive seems to need recovery time (a capacitor/transistor stage): it opens fully when rested and
+    # goes sluggish, then stalls, after many cycles. The mouth is a charge budget: each open second drains it,
+    # each closed second refills `mouth_recharge_per_s` of a second, and an open is skipped if it could not be
+    # paid for. Steady-state this caps the jaw at recharge/(1+recharge) of the time open (0.6 -> 37%).
+    mouth_budget_s: float = 2.0  # seconds of open time available when fully rested
+    mouth_recharge_per_s: float = 0.6
+    # Eyes glow while speaking and go dark briefly at irregular intervals (the LEDs/relay are too slow for fast flicker).
+    eye_blink_s: float = 0.30  # how long the eyes stay dark for a blink
+    eye_blink_min_gap_s: float = 0.8  # lit time between blinks is random in this range
+    eye_blink_max_gap_s: float = 1.5
+
+    # Optional physical trigger: a button to ground (active low) or a PIR sensor (active high).
+    trigger_line: int | None = None  # gpiochip line number; None disables the trigger
+    trigger_chip: str = "/dev/gpiochip3"
+    trigger_active_low: bool = True
+    # "button": someone pressed it, so skip the invitations. "motion": a PIR saw movement, so invite them over.
+    trigger_kind: str = "button"
+    trigger_debounce_s: float = 0.05
+
+
+@dataclass
 class PhotoBoothConfig:
     capture: CaptureConfig = field(default_factory=CaptureConfig)
     compose: ComposeConfig = field(default_factory=ComposeConfig)
     printer: PrinterConfig = field(default_factory=PrinterConfig)
     strip: StripConfig = field(default_factory=StripConfig)
+    interaction: InteractionConfig = field(default_factory=InteractionConfig)
 
     @classmethod
     def from_yaml(cls, path: str) -> "PhotoBoothConfig":
@@ -93,4 +146,5 @@ class PhotoBoothConfig:
             compose=ComposeConfig(**data.get("compose", {})),
             printer=PrinterConfig(**data.get("printer", {})),
             strip=StripConfig(**data.get("strip", {})),
+            interaction=InteractionConfig(**data.get("interaction", {})),
         )

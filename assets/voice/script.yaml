@@ -1,0 +1,43 @@
+# What the booth says. Edit the text and re-run scripts/make_voice_lines.py to
+# re-render. Categories are what the interaction director asks for:
+#   invite   - lured visitors from across the room (repeats until someone steps up)
+#   welcome  - the instructions, once a person is in frame
+#   filler   - "hold still" words used instead of a visual or click timer
+#   three/two/one/got_it - the spoken countdown; the photo is taken as "got_it" starts
+#   printing - while the print is made
+#   done     - sign-off
+#   nobody   - nobody stepped up after the invitations
+#   come_back- the visitor wandered off mid-sequence
+# Spelling is phonetic where it helps the TTS ("afore", "yer"); keep lines short.
+voice: en_GB-alan-medium   # see the license note in docs/photobooth-architecture.md
+preset: ghoul              # dry | ghoul | ghoul_echo | ghoul_haunt | tomb | ghost | crypt
+
+lines:
+  invite:
+    - {id: invite_1, text: "Ahoy, landlubbers... the Ghostly Pirate Photo Booth be open. Come closer, if ye dare."}
+    - {id: invite_2, text: "Psst... yes, you. The spirits of the deep wish to paint yer portrait. Step right up."}
+    - {id: invite_3, text: "Come hither, me hearties. Have yer essence captured, afore the tide turns."}
+    - {id: invite_4, text: "Avast, brave souls! A pirate adventure awaits. Step into me booth."}
+  welcome:
+    - {id: welcome_1, text: "Welcome aboard my pirate photo booth, now hold still while I transport yer essence along a unique pirate journey."}
+  filler:
+    - {id: filler_1, text: "Ar, matey. Hold steady while I be takin' the shot."}
+    - {id: filler_2, text: "Steady now... the spirits be gatherin' round ye."}
+    - {id: filler_3, text: "Don't ye blink, ye scallywag. The ghosts be watchin'."}
+  three:
+    - {id: three, text: "Three."}
+  two:
+    - {id: two, text: "A two."}
+  one:
+    - {id: one, text: "One."}
+  got_it:
+    - {id: got_it, text: "Got it!"}
+  printing:
+    - {id: printing_1, text: "The spirits be inkin' yer portrait. Wait fer it, matey."}
+  done:
+    - {id: done_1, text: "Yer essence be captured, matey. Behold yer unique pirate journey!"}
+    - {id: done_2, text: "It be done! Take yer portrait and sail on, brave soul."}
+  nobody:
+    - {id: nobody_1, text: "No takers? The spirits be patient. I'll be waitin'."}
+  come_back:
+    - {id: come_back_1, text: "Where did ye go, ye scurvy dog? Come back, come back!"}

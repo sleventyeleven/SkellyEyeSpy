@@ -312,3 +312,97 @@ def test_moving_a_framing_slider_does_not_rebuild_the_backgrounds(varied_config,
     assert len(calls) == built + 4
     service.draft_render(reroll=1)  # and a reroll rebuilds just that frame
     assert len(calls) == built + 5
+
+
+# ---- per-frame studio changes: stand position and a retaken photo -------------------------------------------
+
+
+def _shots(service, n):
+    return [cv2.imread(service.draft_path(f"shot_{i}")) for i in range(n)]
+
+
+def test_pinning_one_frames_position_changes_only_that_frame(varied_config, tmp_path):  # noqa: F811
+    service = make_service(varied_config, tmp_path)
+    service.draft_capture()
+    before = service.draft_render(shots=3, seed=5, anchor="center")
+    shots = _shots(service, 3)
+    after = service.draft_render(frame=1, position="left")
+    assert after["frame_anchor"] == {"1": "left"}
+    moved = _shots(service, 3)
+    assert close(shots[0], moved[0]) and close(shots[2], moved[2]) and not close(shots[1], moved[1])
+    assert before["backgrounds"] == after["backgrounds"]  # same backgrounds, only the person moved
+    assert service.draft_render(frame=1, position="auto")["frame_anchor"] == {}
+    assert close(shots[1], _shots(service, 3)[1])  # back to automatic restores the original look
+
+
+def test_position_must_be_valid_and_name_a_frame(varied_config, tmp_path):  # noqa: F811
+    service = make_service(varied_config, tmp_path)
+    service.draft_capture()
+    service.draft_render(shots=2)
+    with pytest.raises(ValueError, match="position"):
+        service.draft_render(frame=0, position="diagonal")
+    with pytest.raises(ValueError, match="frame"):
+        service.draft_render(position="left")
+
+
+def test_retaking_one_frame_uses_a_new_photo_for_it_alone(varied_config, tmp_path):  # noqa: F811
+    service = make_service(varied_config, tmp_path)
+    service.draft_capture()
+    service.draft_render(shots=3, seed=8)
+    original = _shots(service, 3)
+
+    green = np.zeros((720, 1280, 3), np.uint8)
+    green[:] = (0, 220, 0)
+    service._camera_factory = lambda cfg: FakeCamera(cfg, frame=green)
+    info = service.draft_retake(1)
+    assert info["frame"] == 1 and info["people"] == 1
+    result = service.draft_render()
+    assert result["retaken"] == [1]
+    now = _shots(service, 3)
+    assert close(original[0], now[0]) and close(original[2], now[2]) and not close(original[1], now[1])
+
+    assert service.draft_render(restore=1)["retaken"] == []
+    assert close(original[1], _shots(service, 3)[1])
+
+
+def test_retake_needs_a_rendered_reel_and_a_valid_frame(varied_config, tmp_path):  # noqa: F811
+    service = make_service(varied_config, tmp_path)
+    with pytest.raises(RuntimeError, match="Render a reel"):
+        service.draft_retake(0)
+    service.draft_capture()
+    service.draft_render(shots=2)
+    with pytest.raises(ValueError, match="frame"):
+        service.draft_retake(5)
+
+
+def test_a_new_capture_clears_per_frame_changes(varied_config, tmp_path):  # noqa: F811
+    service = make_service(varied_config, tmp_path)
+    service.draft_capture()
+    service.draft_render(shots=2, seed=3)
+    service.draft_render(frame=0, position="right")
+    service.draft_capture()
+    assert service.draft_render(shots=2)["frame_anchor"] == {}
+
+
+def test_per_frame_endpoints(varied_config, tmp_path):  # noqa: F811
+    app = Flask(__name__)
+    app.register_blueprint(create_blueprint(make_service(varied_config, tmp_path)))
+    client = app.test_client()
+    client.post("/api/photobooth/draft/capture")
+    client.post("/api/photobooth/draft/render?shots=2&seed=1")
+    assert client.post("/api/photobooth/draft/render?frame=0&position=right").get_json()["frame_anchor"] == {"0": "right"}
+    assert client.post("/api/photobooth/draft/render?frame=0&position=up").status_code == 400
+    assert client.post("/api/photobooth/draft/retake").status_code == 400
+    assert client.post("/api/photobooth/draft/retake?index=9").status_code == 400
+    assert client.post("/api/photobooth/draft/retake?index=1").get_json()["status"] == "success"
+    assert client.post("/api/photobooth/draft/render").get_json()["retaken"] == [1]
+
+
+def test_page_has_the_boxed_sections_in_order_and_smooth_scaled_down_preview(varied_config, tmp_path):  # noqa: F811
+    app = Flask(__name__)
+    app.register_blueprint(create_blueprint(make_service(varied_config, tmp_path)))
+    page = app.test_client().get("/photobooth/view").data.decode()
+    assert page.index('id="voicePanel"') < page.index('id="photoCard"') < page.index('id="studio"')  # voice first, then photo, then render
+    for placeholder in ('id="renderTools"', 'id="previews"', "slot", "retakeFrame", "&position="):
+        assert placeholder in page
+    assert "imageRendering" in page and "nearest neighbour" in page  # scaled-down 1-bit previews are smoothed, not decimated

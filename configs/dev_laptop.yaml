@@ -32,3 +32,20 @@ printer:
   enabled: true
   backend: phomemo_m02
   dry_run_path: "scratch/last_print.bin"
+
+interaction:
+  enabled: true
+  voice_dir: assets/voice         # rendered by scripts/make_voice_lines.py
+  play_audio: true                # needs `aplay`; without it the audio is simulated
+  audio_device: "plughw:CARD=sndmax98357adac,DEV=0"
+  volume: 1.0                     # small mono amp: below ~30% is hard to understand
+  # Moving the real eyes and mouth is opt-in. Leave false until a supervised first test.
+  use_gpio: false
+  move_mouth: true
+  flash_eyes: true
+  auto_print: false               # studio-first: review the reel before spending paper
+  welcome: true                   # false = skip the long instructions line (faster for a queue of kids)
+  # Optional trigger, wired to a spare header pin's gpiochip3 line number:
+  #   a button to ground ("button", active low) or a PIR sensor ("motion", active high)
+  # trigger_line: 7
+  # trigger_kind: button

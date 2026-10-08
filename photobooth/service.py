@@ -38,6 +38,7 @@ _DRAFT_PARAMS = {
     "offset": "anchor_offset",
 }
 _ANCHOR_MODES = ("center", "left", "right", "alternate", "random")
+_FRAME_POSITIONS = ("center", "left", "right")  # what a single frame can be pinned to
 
 
 @dataclass
@@ -60,6 +61,9 @@ class Draft:
     # backgrounds already built for this capture, so moving a size/outline/soften/placement
     # slider does not rebuild them (they only depend on the seed and the variation settings)
     bg_cache: dict = field(default_factory=dict)
+    # per-frame changes made in the studio: where the person stands, and a photo retaken for one frame only
+    frame_anchor: dict[int, str] = field(default_factory=dict)
+    frame_photos: dict[int, tuple] = field(default_factory=dict)  # frame index -> (frame, mask)
 
 
 @dataclass
@@ -72,6 +76,61 @@ class SnapResult:
     seconds: float
     seed: int | None = None  # reproduces the backgrounds: pass ?seed=N
     backgrounds: list[str] = field(default_factory=list)
+
+
+class VisitorSession:
+    """The camera, held open for one visitor sequence. Cheap presence checks
+    while inviting, and a capture at an exact moment (as "got it" is spoken)
+    with auto-exposure already settled. Other camera users (the aim view,
+    snapshots) are refused until close().
+    """
+
+    FLUSH_FRAMES = 3  # frames read per grab, to get past stale buffered ones
+
+    def __init__(self, service: "PhotoBoothService"):
+        self._service = service
+        service._begin_visitor_session()
+        self._open = False
+        try:
+            self._camera = service._camera_factory(service._config.capture)
+            self._open = True
+            for _ in range(_WARMUP_FRAMES):  # let auto-exposure settle once, up front
+                self._camera.read()
+        except Exception:
+            self.close()
+            raise
+
+    def _grab(self) -> np.ndarray:
+        frame = None
+        for _ in range(self.FLUSH_FRAMES):
+            frame = self._camera.read()
+        if frame is None:
+            raise RuntimeError("Failed to read a frame from the camera")
+        return self._service._resize_working(frame)
+
+    def people(self) -> int:
+        """People currently in view (tiny distant bystanders are ignored)."""
+        frame = self._grab()
+        kept, _ignored = count_people(self._service._segment(frame), self._service._config.compose.group_min_area_ratio)
+        return kept
+
+    def capture(self) -> dict:
+        """Takes the photo now and stores it as the studio's current draft."""
+        frame = self._grab()
+        mask = self._service._segment(frame)
+        with self._service._lock:
+            return self._service._store_draft_locked(frame, mask)
+
+    def close(self) -> None:
+        if self._open:
+            self._open = False
+            release = getattr(self._camera, "release", None) or (lambda: self._camera.__exit__(None, None, None))
+            try:
+                release()
+            finally:
+                self._service._end_visitor_session()
+        else:
+            self._service._end_visitor_session()
 
 
 class PhotoBoothService:
@@ -105,6 +164,8 @@ class PhotoBoothService:
         self._strip_target = 0
         self._strip_dir: str | None = None
         self._draft: Draft | None = None
+        self._draft_counter = 0  # bumps with every stored capture so a page can notice a new one
+        self._visitor_active = False
         self._lock = threading.Lock()
         self.last: SnapResult | None = None
 
@@ -144,17 +205,28 @@ class PhotoBoothService:
             return self.last
 
     def _capture(self, warmup: int = _WARMUP_FRAMES) -> np.ndarray:
+        if self._visitor_active:
+            raise RuntimeError("The camera is in use by a visitor sequence")
         with self._camera_factory(self._config.capture) as camera:
             frame = None
             for _ in range(warmup):  # let auto-exposure settle
                 frame = camera.read()
         if frame is None:
             raise RuntimeError("Failed to read a frame from the camera")
+        return self._resize_working(frame)
+
+    def _resize_working(self, frame: np.ndarray) -> np.ndarray:
         width = self._config.compose.working_width
         if frame.shape[1] > width:
             height = round(frame.shape[0] * width / frame.shape[1])
             frame = cv2.resize(frame, (width, height))
         return frame
+
+    def _segment(self, frame: np.ndarray) -> np.ndarray:
+        with self._lock:
+            if self._segmenter is None:
+                self._segmenter = self._segmenter_factory()
+            return self._segmenter.person_mask(frame)
 
     def _compose(
         self,
@@ -402,14 +474,39 @@ class PhotoBoothService:
             if self._segmenter is None:
                 self._segmenter = self._segmenter_factory()
             mask = self._segmenter.person_mask(frame)
+            return self._store_draft_locked(frame, mask)
 
-            folder = os.path.join(self._output_dir, "draft_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
-            os.makedirs(folder, exist_ok=True)
-            cv2.imwrite(os.path.join(folder, "capture.jpg"), frame)
-            cv2.imwrite(os.path.join(folder, "mask.png"), mask)
-            people, ignored = count_people(mask, self._config.compose.group_min_area_ratio)
-            self._draft = Draft(frame, mask, folder, people, ignored)
-            return {"people": people, "ignored": ignored, "person_percent": round(float((mask > 0).mean() * 100), 1)}
+    def _store_draft_locked(self, frame: np.ndarray, mask: np.ndarray) -> dict:
+        folder = os.path.join(self._output_dir, "draft_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+        os.makedirs(folder, exist_ok=True)
+        cv2.imwrite(os.path.join(folder, "capture.jpg"), frame)
+        cv2.imwrite(os.path.join(folder, "mask.png"), mask)
+        people, ignored = count_people(mask, self._config.compose.group_min_area_ratio)
+        self._draft = Draft(frame, mask, folder, people, ignored)
+        self._draft_counter += 1
+        return {"people": people, "ignored": ignored, "person_percent": round(float((mask > 0).mean() * 100), 1)}
+
+    @property
+    def draft_stamp(self) -> int:
+        return self._draft_counter
+
+    def has_draft(self) -> bool:
+        return self._draft is not None and self._draft.strip is not None
+
+    # ---- visitor sequence: the camera held open while the skeleton talks ----
+
+    def open_visitor_session(self) -> "VisitorSession":
+        return VisitorSession(self)
+
+    def _begin_visitor_session(self) -> None:
+        with self._lock:
+            if self._visitor_active:
+                raise RuntimeError("A visitor sequence is already using the camera")
+            self._visitor_active = True
+
+    def _end_visitor_session(self) -> None:
+        with self._lock:
+            self._visitor_active = False
 
     def draft_render(
         self,
@@ -418,6 +515,9 @@ class PhotoBoothService:
         vintage: bool | None = None,
         reroll: int | None = None,
         reroll_all: bool = False,
+        frame: int | None = None,
+        position: str | None = None,
+        restore: int | None = None,
         **params,
     ) -> dict:
         """Renders the reel for the current capture. Slider values stick
@@ -430,6 +530,18 @@ class PhotoBoothService:
             if draft is None:
                 raise RuntimeError("No capture yet -- take a photo first")
             started = time.monotonic()
+
+            if position is not None:
+                if position not in ("auto", *_FRAME_POSITIONS):
+                    raise ValueError(f"position must be one of auto, {', '.join(_FRAME_POSITIONS)}")
+                if frame is None:
+                    raise ValueError("position needs a frame index")
+                if position == "auto":
+                    draft.frame_anchor.pop(frame, None)
+                else:
+                    draft.frame_anchor[frame] = position
+            if restore is not None:
+                draft.frame_photos.pop(restore, None)
 
             for key, value in params.items():
                 if value is None:
@@ -465,8 +577,9 @@ class PhotoBoothService:
                         draft.bg_cache.clear()
                     draft.bg_cache[key] = make_background(bg_seed, bg_index, self._pool(), self._load_cached, compose_cfg)
                 background, label = draft.bg_cache[key]
-                anchor = anchor_for(bg_seed, bg_index, compose_cfg.anchor_mode, compose_cfg.anchor_offset)
-                shots_bgr.append(self._compose(draft.frame, draft.mask, background, size, vintage, compose_cfg, anchor))
+                anchor = anchor_for(bg_seed, bg_index, draft.frame_anchor.get(i, compose_cfg.anchor_mode), compose_cfg.anchor_offset)
+                photo, photo_mask = draft.frame_photos.get(i, (draft.frame, draft.mask))
+                shots_bgr.append(self._compose(photo, photo_mask, background, size, vintage, compose_cfg, anchor))
                 labels.append(label)
 
             strip = render_strip(shots_bgr, cfg, cfg.footer or datetime.now().strftime("%b %d, %Y"))
@@ -488,12 +601,33 @@ class PhotoBoothService:
                 "seed": draft.seed,
                 "overrides": {str(i): s for i, s in draft.overrides.items()},
                 "backgrounds": labels,
+                "frame_anchor": {str(i): a for i, a in draft.frame_anchor.items() if i < count},
+                "retaken": sorted(i for i in draft.frame_photos if i < count),
                 "shots": count,
                 "params": dict(draft.params),
                 "people": draft.people,
                 "ignored": draft.ignored,
                 "seconds": round(seconds, 2),
             }
+
+    def draft_retake(self, index: int) -> dict:
+        """Takes a new photo for one frame only (the others keep the original).
+        Render again afterwards to see it.
+        """
+        with self._lock:
+            draft = self._draft
+            if draft is None or draft.strip is None:
+                raise RuntimeError("Render a reel first, then retake individual frames")
+            if not 0 <= index < draft.shots:
+                raise ValueError(f"frame must be 0..{draft.shots - 1}")
+            frame = self._capture()
+            if self._segmenter is None:
+                self._segmenter = self._segmenter_factory()
+            mask = self._segmenter.person_mask(frame)
+            draft.frame_photos[index] = (frame, mask)
+            cv2.imwrite(os.path.join(draft.dir, f"capture_{index}.jpg"), frame)
+            people, ignored = count_people(mask, self._config.compose.group_min_area_ratio)
+            return {"frame": index, "people": people, "ignored": ignored}
 
     def draft_print(self) -> SnapResult:
         """Prints exactly the strip last rendered, so what was approved on

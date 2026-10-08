@@ -24,11 +24,14 @@ def register_photobooth(flask_app):
     config_path = os.environ.get("PHOTOBOOTH_CONFIG", "configs/skelly_zero3w.yaml")
     try:
         from photobooth.config import PhotoBoothConfig
+        from photobooth.interaction.factory import build_interaction
         from photobooth.service import PhotoBoothService
         from photobooth.web import create_blueprint
 
         config = PhotoBoothConfig.from_yaml(config_path)
-        flask_app.register_blueprint(create_blueprint(PhotoBoothService(config)))
+        service = PhotoBoothService(config)
+        interaction = build_interaction(service, config, skeleton=skeleton)
+        flask_app.register_blueprint(create_blueprint(service, interaction))
         return True
     except Exception as e:  # noqa: BLE001
         print(f"Photo booth disabled: {type(e).__name__}: {e}")

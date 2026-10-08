@@ -194,3 +194,48 @@ def test_aim_endpoint_and_view_page(config, tmp_path):
     assert response.status_code == 200 and response.mimetype == "image/jpeg"
     page = client.get("/photobooth/view").data
     assert b"/api/photobooth/aim" in page and b"/api/photobooth/snap" in page and b"countdown" in page.lower()
+
+
+# ---------- visitor session (camera held open for the spoken sequence) ----------
+
+class ReleasableCamera(FakeCamera):
+    opened = 0
+    released = 0
+
+    def __init__(self, config):
+        super().__init__(config)
+        ReleasableCamera.opened += 1
+
+    def release(self):
+        ReleasableCamera.released += 1
+
+
+def test_visitor_session_holds_the_camera_and_captures_a_draft(config, tmp_path):
+    ReleasableCamera.opened = ReleasableCamera.released = 0
+    service = make_service(config, tmp_path, camera_factory=ReleasableCamera)
+    stamp = service.draft_stamp
+    session = service.open_visitor_session()
+    assert ReleasableCamera.opened == 1  # opened once for the whole sequence
+    assert session.people() == 1
+    assert session.people() == 1 and ReleasableCamera.opened == 1
+    with pytest.raises(RuntimeError, match="in use"):
+        service.draft_capture()  # the aim view / snapshots must wait
+    with pytest.raises(RuntimeError, match="already"):
+        service.open_visitor_session()
+    info = session.capture()
+    assert info["people"] == 1 and service.draft_stamp == stamp + 1
+    session.close()
+    session.close()  # harmless twice
+    assert ReleasableCamera.released == 1
+    assert service.draft_render()["shots"] >= 1  # the captured frame is the current draft
+    assert service.draft_capture()["people"] == 1  # camera is free again
+
+
+def test_visitor_session_releases_the_busy_flag_if_the_camera_fails(config, tmp_path):
+    def broken(_config):
+        raise RuntimeError("no camera")
+
+    service = make_service(config, tmp_path, camera_factory=broken)
+    with pytest.raises(RuntimeError, match="no camera"):
+        service.open_visitor_session()
+    assert service._visitor_active is False  # a failed open must not lock the booth out

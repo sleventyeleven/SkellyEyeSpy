@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "voice": "en_GB-alan-medium",
+  "preset": "ghoul",
+  "lines": [
+    {
+      "id": "invite_1",
+      "category": "invite",
+      "text": "Ahoy, landlubbers... the Ghostly Pirate Photo Booth be open. Come closer, if ye dare.",
+      "file": "invite_1.wav",
+      "seconds": 8.864
+    },
+    {
+      "id": "invite_2",
+      "category": "invite",
+      "text": "Psst... yes, you. The spirits of the deep wish to paint yer portrait. Step right up.",
+      "file": "invite_2.wav",
+      "seconds": 7.186
+    },
+    {
+      "id": "invite_3",
+      "category": "invite",
+      "text": "Come hither, me hearties. Have yer essence captured, afore the tide turns.",
+      "file": "invite_3.wav",
+      "seconds": 6.643
+    },
+    {
+      "id": "invite_4",
+      "category": "invite",
+      "text": "Avast, brave souls! A pirate adventure awaits. Step into me booth.",
+      "file": "invite_4.wav",
+      "seconds": 7.396
+    },
+    {
+      "id": "welcome_1",
+      "category": "welcome",
+      "text": "Welcome aboard my pirate photo booth, now hold still while I transport yer essence along a unique pirate journey.",
+      "file": "welcome_1.wav",
+      "seconds": 9.406
+    },
+    {
+      "id": "filler_1",
+      "category": "filler",
+      "text": "Ar, matey. Hold steady while I be takin' the shot.",
+      "file": "filler_1.wav",
+      "seconds": 5.153
+    },
+    {
+      "id": "filler_2",
+      "category": "filler",
+      "text": "Steady now... the spirits be gatherin' round ye.",
+      "file": "filler_2.wav",
+      "seconds": 3.92
+    },
+    {
+      "id": "filler_3",
+      "category": "filler",
+      "text": "Don't ye blink, ye scallywag. The ghosts be watchin'.",
+      "file": "filler_3.wav",
+      "seconds": 4.869
+    },
+    {
+      "id": "three",
+      "category": "three",
+      "text": "Three.",
+      "file": "three.wav",
+      "seconds": 1.928
+    },
+    {
+      "id": "two",
+      "category": "two",
+      "text": "A two.",
+      "file": "two.wav",
+      "seconds": 1.104
+    },
+    {
+      "id": "one",
+      "category": "one",
+      "text": "One.",
+      "file": "one.wav",
+      "seconds": 0.841
+    },
+    {
+      "id": "got_it",
+      "category": "got_it",
+      "text": "Got it!",
+      "file": "got_it.wav",
+      "seconds": 1.07
+    },
+    {
+      "id": "printing_1",
+      "category": "printing",
+      "text": "The spirits be inkin' yer portrait. Wait fer it, matey.",
+      "file": "printing_1.wav",
+      "seconds": 5.289
+    },
+    {
+      "id": "done_1",
+      "category": "done",
+      "text": "Yer essence be captured, matey. Behold yer unique pirate journey!",
+      "file": "done_1.wav",
+      "seconds": 5.616
+    },
+    {
+      "id": "done_2",
+      "category": "done",
+      "text": "It be done! Take yer portrait and sail on, brave soul.",
+      "file": "done_2.wav",
+      "seconds": 5.06
+    },
+    {
+      "id": "nobody_1",
+      "category": "nobody",
+      "text": "No takers? The spirits be patient. I'll be waitin'.",
+      "file": "nobody_1.wav",
+      "seconds": 5.262
+    },
+    {
+      "id": "come_back_1",
+      "category": "come_back",
+      "text": "Where did ye go, ye scurvy dog? Come back, come back!",
+      "file": "come_back_1.wav",
+      "seconds": 4.885
+    }
+  ]
+}
