@@ -93,6 +93,13 @@
             <a href="/api/camera/stream" target="_blank">View Stream</a>
         </div>
 
+        <!-- Photo Booth -->
+        <div class="control-group">
+            <h2>Photo Booth</h2>
+            <button id="snapBtn" onclick="snapPhoto()">Take Photo</button>
+            <div id="boothResult"></div>
+        </div>
+
         <!-- Status Display -->
         <div class="control-group">
             <h2>Status</h2>
@@ -215,6 +222,27 @@
                     console.error('Error:', error);
                     alert('Error capturing photo');
                 });
+        }
+
+        // Photo Booth
+        function snapPhoto() {
+            const btn = document.getElementById('snapBtn');
+            const out = document.getElementById('boothResult');
+            btn.disabled = true;
+            out.textContent = 'Say cheese...';
+            fetch('/api/photobooth/snap', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const printed = data.printed ? 'printed' : ('not printed' + (data.print_error ? ' (' + data.print_error + ')' : ''));
+                        out.innerHTML = '<div class="status success">Done in ' + data.seconds + 's, ' + printed + '</div>' +
+                            '<img src="/api/photobooth/last_print?t=' + Date.now() + '" style="max-width:100%;image-rendering:pixelated;">';
+                    } else {
+                        out.innerHTML = '<div class="status error">' + data.message + '</div>';
+                    }
+                })
+                .catch(() => { out.innerHTML = '<div class="status error">Photo booth unavailable</div>'; })
+                .finally(() => { btn.disabled = false; });
         }
 
         // Update status every 5 seconds

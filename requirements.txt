@@ -1,0 +1,7 @@
+flask
+opencv-python
+mediapipe
+numpy>=2.2,<2.5  # tested range; the Radxa board runs 2.4.6
+pillow
+pyyaml
+python-periphery; platform_system == "Linux"

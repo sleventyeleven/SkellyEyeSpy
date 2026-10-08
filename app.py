@@ -1,61 +1,39 @@
 from flask import Flask, render_template, request, jsonify, Response
-import gpiod
+import os
 import subprocess
 import time
-import os
 from datetime import datetime
+
+from skelly import Skeleton
 
 app = Flask(__name__)
 
-# Pin definitions
-MOUTH_OPEN_PIN = 20  # PIN_7 (gpiochip3 20)
-EYE_LEDS_PIN = 1     # PIN_11 (gpiochip3 1)
-BODY_MOTOR_PIN = 8   # PIN_15 (gpiochip3 8)
-
-# GPIO chip
-GPIO_CHIP = "gpiochip3"
+# GPIO goes through skelly.hardware (python-periphery on the board, a
+# simulated backend on a dev machine). Constructing it touches no pins.
+skeleton = Skeleton()
 
 # Audio control
 I2S_ENABLED = False
 
-def get_gpio_line(pin):
-    """Get GPIO line for a specific pin"""
-    try:
-        chip = gpiod.Chip(GPIO_CHIP)
-        line = chip.get_line(pin)
-        return line
-    except Exception as e:
-        print(f"Error getting GPIO line: {e}")
-        return None
 
-def set_pin_state(pin, state):
-    """Set GPIO pin state (True for HIGH, False for LOW)"""
-    line = get_gpio_line(pin)
-    if not line:
-        return False
-
+def register_photobooth(flask_app):
+    """Optional: needs the photobooth dependencies (opencv, mediapipe) --
+    absent from the old system-python setup. Never let a missing or broken
+    booth take the animatronic controls down with it.
+    """
+    config_path = os.environ.get("PHOTOBOOTH_CONFIG", "configs/skelly_zero3w.yaml")
     try:
-        line.request(consumer="animatronic_control", type=gpiod.LINE_REQ_DIR_OUT)
-        line.set_value(1 if state else 0)
-        line.release()
+        from photobooth.config import PhotoBoothConfig
+        from photobooth.service import PhotoBoothService
+        from photobooth.web import create_blueprint
+
+        config = PhotoBoothConfig.from_yaml(config_path)
+        flask_app.register_blueprint(create_blueprint(PhotoBoothService(config)))
         return True
-    except Exception as e:
-        print(f"Error setting pin {pin} state: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Photo booth disabled: {type(e).__name__}: {e}")
         return False
 
-def release_all_pins():
-    """Release all GPIO pins"""
-    try:
-        # Release each pin individually
-        for pin in [MOUTH_OPEN_PIN, EYE_LEDS_PIN, BODY_MOTOR_PIN]:
-            line = get_gpio_line(pin)
-            if line:
-                try:
-                    line.release()
-                except:
-                    pass  # Already released or not requested
-    except Exception as e:
-        print(f"Error releasing pins: {e}")
 
 @app.route('/')
 def dashboard():
@@ -67,58 +45,40 @@ def dashboard():
 def open_mouth():
     """Open mouth motor"""
     try:
-        success = set_pin_state(MOUTH_OPEN_PIN, True)
-        if success:
-            time.sleep(0.5)  # Keep motor active for half a second
-            set_pin_state(MOUTH_OPEN_PIN, False)
-            release_all_pins()
-            return jsonify({"status": "success", "message": "Mouth opened"})
-        else:
-            return jsonify({"status": "error", "message": "Failed to open mouth"}), 500
+        skeleton.mouth_open()
+        time.sleep(0.5)  # Keep motor active for half a second
+        skeleton.mouth_close()
+        return jsonify({"status": "success", "message": "Mouth opened"})
     except Exception as e:
-        release_all_pins()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/eyes/on', methods=['POST'])
 def turn_on_eyes():
     """Turn on eye LEDs"""
     try:
-        success = set_pin_state(EYE_LEDS_PIN, True)
-        if success:
-            return jsonify({"status": "success", "message": "Eyes turned on"})
-        else:
-            return jsonify({"status": "error", "message": "Failed to turn on eyes"}), 500
+        skeleton.eyes_on()
+        return jsonify({"status": "success", "message": "Eyes turned on"})
     except Exception as e:
-        release_all_pins()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/eyes/off', methods=['POST'])
 def turn_off_eyes():
     """Turn off eye LEDs"""
     try:
-        success = set_pin_state(EYE_LEDS_PIN, False)
-        if success:
-            return jsonify({"status": "success", "message": "Eyes turned off"})
-        else:
-            return jsonify({"status": "error", "message": "Failed to turn off eyes"}), 500
+        skeleton.eyes_off()
+        return jsonify({"status": "success", "message": "Eyes turned off"})
     except Exception as e:
-        release_all_pins()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/body/move', methods=['POST'])
 def move_body():
     """Move body motor (dance)"""
     try:
-        success = set_pin_state(BODY_MOTOR_PIN, True)
-        if success:
-            time.sleep(1)  # Keep motor active for 1 second
-            set_pin_state(BODY_MOTOR_PIN, False)
-            release_all_pins()
-            return jsonify({"status": "success", "message": "Body moved"})
-        else:
-            return jsonify({"status": "error", "message": "Failed to move body"}), 500
+        skeleton.body_start()
+        time.sleep(1)  # Keep motor active for 1 second
+        skeleton.body_stop()
+        return jsonify({"status": "success", "message": "Body moved"})
     except Exception as e:
-        release_all_pins()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # Audio Control Endpoints
@@ -200,12 +160,13 @@ def stream_video():
 def get_status():
     """Get system status"""
     try:
-        # Check GPIO pins state (simplified for demo)
+        state = skeleton.state()
         status = {
+            "gpio_backend": type(skeleton.backend).__name__,
             "gpio_pins": {
-                "mouth_open": "unknown",
-                "eye_leds": "unknown",
-                "body_motor": "unknown"
+                "mouth_open": state["mouth_open"],
+                "eye_leds": state["eyes"],
+                "body_motor": state["body"]
             },
             "audio": {
                 "i2s_enabled": I2S_ENABLED
@@ -219,9 +180,10 @@ def get_status():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == '__main__':
-    # Ensure pins are released on startup
-    release_all_pins()
+register_photobooth(app)
 
-    # Run the Flask app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == '__main__':
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=True)
+    finally:
+        skeleton.cleanup()

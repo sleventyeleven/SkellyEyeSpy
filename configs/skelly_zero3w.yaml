@@ -1,0 +1,40 @@
+# On-device config: Radxa Zero 3W + CSI camera (Radxa Camera 8M/IMX219,
+# or a Raspberry Pi Camera V2 -- see docs/hardware-research.md for why
+# the Radxa Camera 4K/IMX415 is NOT used here) + Phomemo M02 over
+# Bluetooth RFCOMM.
+#
+# Not yet validated on real hardware -- the skelly is in storage and the
+# printer hasn't been ordered yet. capture.source and
+# printer.bluetooth_address are placeholders to fill in once both exist.
+capture:
+  source: "0"  # confirm against /dev/videoN once the CSI overlay is loaded
+  width: 1280
+  height: 720
+
+compose:
+  # Backgrounds are a glob: drop more art in the folder and it joins the random pool.
+  backgrounds:
+    - assets/backgrounds/highres/*.jpg
+  # Filename substrings that must never be mirrored (readable lettering):
+  # #2 "The Drunken Grog Saloon", #13 the RUM barrels, #20 "The Salty Dog Saloon".
+  no_flip_markers: [saloon, noflip, image_27c5b7c, image_c757b452, image_f813a323]
+  randomize_backgrounds: true   # random order, never the same file twice in a row
+  vary_backgrounds: true        # per-frame zoom/pan, mirror, tone and hue jitter
+  morph_probability: 0.33       # share of frames that blend two scenes
+  person_height_ratio: 0.35     # person's visible height as a share of the frame (30-40% suits an adult)
+  person_scale_min: 0.1         # lowest allowed scale (do not raise: it overrides small size ratios)
+  anchor_mode: alternate        # center | left | right | alternate | random
+  edge_mode: stipple            # stipple | separate | none | ring (old solid glow; prints as an angel halo)
+  outline_px: 5                 # width of the edge band in px
+  edge_strength: 0.3            # 0..1
+  person_pop: 0.15              # 0..1 saturation/contrast boost on the person
+  background_soften: 0.33       # calm/brighten the scene before dithering
+  sepia_strength: 0.5
+  vignette_strength: 0.35
+  grain_amount: 0.12
+  vintage: true
+
+printer:
+  enabled: true
+  backend: phomemo_m02
+  bluetooth_address: "00:00:00:00:00:00"  # replace with the real M02 MAC once paired
